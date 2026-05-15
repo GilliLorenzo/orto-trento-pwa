@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 from datetime import datetime, timedelta
+import pytz # Libreria per gestire il fuso orario
 
 # Ottimizzazione per Google Pixel 10 Pro
 st.set_page_config(page_title="Orto ITRENT123", layout="centered")
@@ -56,14 +57,14 @@ if current and today and yesterday:
     temp_ieri_media = yesterday.get('tempAvg', yesterday.get('tempHigh', curr_m['temp']))
     diff_temp = curr_m['temp'] - temp_ieri_media
 
-    # Nuova Riga 1: Temperature e Umidità
+    # Riga 1: Temperature e Umidità
     r1_col1, r1_col2, r1_col3, r1_col4 = st.columns(4)
     r1_col1.metric("Temp Now", f"{curr_m['temp']}°C", f"{diff_temp:+.1f} vs ieri")
     r1_col2.metric("Temp Max", f"{today.get('tempHigh', '--')}°C")
     r1_col3.metric("Temp Min", f"{today.get('tempLow', '--')}°C")
     r1_col4.metric("Umidità", f"{umidita_visualizzata}%", nota_umidita)
 
-    # Nuova Riga 2: Pioggia e Vento
+    # Riga 2: Pioggia e Vento
     r2_col1, r2_col2, r2_col3, r2_col4 = st.columns(4)
     r2_col1.metric("Pioggia 1h", f"{curr_m.get('precipRate', 0)} mm")
     r2_col2.metric("Tot Pioggia", f"{pioggia_oggi} mm")
@@ -77,7 +78,6 @@ if current and today and yesterday:
     
     st.subheader("🎯 Strategia Orto")
     
-    # Irrigazione
     if bilancio_ieri_oggi > 6.0:
         st.error(f"🔴 **IRRIGAZIONE: STOP** \nAccumulo ieri e oggi: {bilancio_ieri_oggi:.1f} mm. Terreno saturo.")
     elif bilancio_ieri_oggi > 2.0:
@@ -85,7 +85,6 @@ if current and today and yesterday:
     else:
         st.success("🟢 **IRRIGAZIONE: OK** \nProcedere con impianto a goccia.")
 
-    # Trattamenti
     if curr_m['windSpeed'] < 10 and umidita_visualizzata < 75:
         st.success("🟢 **TRATTAMENTI: OK** \nIdeale per Zeolite o Neem.")
     else:
@@ -101,4 +100,7 @@ if current and today and yesterday:
 else:
     st.error("Connessione con ITRENT123 fallita.")
 
-st.caption(f"Update: {datetime.now().strftime('%H:%M:%S')} | Logica Ieri + Oggi")
+# --- FOOTER CON ORA ITALIANA ---
+tz_italy = pytz.timezone('Europe/Rome')
+ora_italiana = datetime.now(tz_italy).strftime('%H:%M:%S')
+st.caption(f"Ultimo aggiornamento: {ora_italiana} | Trento")
