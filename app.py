@@ -15,7 +15,6 @@ except:
 STATION_ID = "ITRENT123"
 
 # --- RECUPERO DATI ---
-
 def get_full_weather_data():
     now = datetime.now()
     today_str = now.strftime('%Y%m%d')
@@ -34,30 +33,28 @@ def get_full_weather_data():
         return None, None, None
 
 # --- ESECUZIONE ---
-
 current, today, yesterday = get_full_weather_data()
 
 if current and today and yesterday:
     curr_m = current['metric']
     
-    # --- CORREZIONE LOGICA UMIDITÀ ---
-    # Se la stazione segna 10% ma piove, è un errore del sensore.
+    # --- LOGICA CORREZIONE UMIDITÀ ---
     umidita_raw = current.get('humidity', 0)
-    pioggia_ora = curr_m.get('precipTotal', 0)
+    pioggia_oggi = today.get('precipTotal', 0)
     
-    if umidita_raw <= 10 and pioggia_ora > 0:
-        umidita_fissata = 95 # Valore realistico durante pioggia
-        umidita_nota = " (Dato Corretto: Sensore KO)"
+    # Se segna 10% o meno mentre l'accumulo odierno sale, correggiamo
+    if umidita_raw <= 15 and pioggia_oggi > 0.5:
+        umidita_visualizzata = 95
+        nota_umidita = " (Corretto: Sensore KO)"
     else:
-        umidita_fissata = umidita_raw
-        umidita_nota = ""
+        umidita_visualizzata = umidita_raw
+        nota_umidita = ""
 
     st.title("🌿 Orto Digitale ITRENT123")
     
     # --- SEZIONE 1: DATI STAZIONE ---
     st.subheader("📊 Dati Stazione")
     
-    # Delta Temperatura (con fallback su tempHigh se tempAvg manca)
     temp_ieri = yesterday.get('tempAvg', yesterday.get('tempHigh', curr_m['temp']))
     diff_temp = curr_m['temp'] - temp_ieri
 
@@ -65,44 +62,43 @@ if current and today and yesterday:
     r1_col1.metric("Temp", f"{curr_m['temp']}°C", f"{diff_temp:+.1f} vs ieri")
     r1_col2.metric("Pioggia 1h", f"{curr_m.get('precipRate', 0)} mm")
     r1_col3.metric("Vento", f"{curr_m['windSpeed']} km/h")
-    r1_col4.metric("Umidità", f"{umidita_fissata}%", umidita_nota)
+    r1_col4.metric("Umidità", f"{umidita_visualizzata}%", nota_umidita)
 
     r2_col1, r2_col2, r2_col3, r2_col4 = st.columns(4)
     r2_col1.metric("Temp Max", f"{today.get('tempHigh', '--')}°C")
     r2_col2.metric("Temp Min", f"{today.get('tempLow', '--')}°C")
-    r2_col3.metric("Tot Accumulo", f"{today.get('precipTotal', 0)} mm")
+    r2_col3.metric("Tot Accumulo", f"{pioggia_oggi} mm")
     r2_col4.metric("Raffica Max", f"{today.get('windGust', '--')} km/h")
 
     st.divider()
 
-    # --- SEZIONE 2: BILANCIO E CONSIGLI ---
-    # Somma reale 48h come richiesto
-    bilancio_48h = yesterday.get('precipTotal', 0) + today.get('precipTotal', 0)
+    # --- SEZIONE 2: STRATEGIA ORTO ---
+    bilancio_48h = yesterday.get('precipTotal', 0) + pioggia_oggi
     
-    st.subheader("🤖 Strategia Orto")
+    st.subheader("🎯 Strategia Orto")
     
-    # Semaforo Irrigazione
+    # Irrigazione
     if bilancio_48h > 6.0:
-        st.error(f"🔴 **IRRIGAZIONE: STOP** \nAccumulo 48h: {bilancio_48h:.1f} mm. Terreno saturo.")
+        st.error(f"🔴 **IRRIGAZIONE: STOP** Accumulo 48h: {bilancio_48h:.1f} mm. Terreno saturo.")
     elif bilancio_48h > 2.0:
-        st.warning(f"🟡 **IRRIGAZIONE: ATTENDI** \nAccumulo 48h: {bilancio_48h:.1f} mm. Umidità nell'argilla.")
+        st.warning(f"🟡 **IRRIGAZIONE: ATTENDI** Accumulo 48h: {bilancio_48h:.1f} mm. Argilla umida.")
     else:
-        st.success("🟢 **IRRIGAZIONE: OK** \nProcedere con impianto a goccia.")
+        st.success("🟢 **IRRIGAZIONE: OK** Procedere con impianto a goccia.")
 
-    # Semaforo Trattamenti
-    if curr_m['windSpeed'] < 10 and umidita_fissata < 75:
-        st.success("🟢 **TRATTAMENTI: IDEALE** \nCondizioni ottime per Zeolite o Neem.")
+    # Trattamenti
+    if curr_m['windSpeed'] < 10 and umidita_visualizzata < 75:
+        st.success("🟢 **TRATTAMENTI: OK** Ideale per Zeolite o Neem.")
     else:
-        st.warning("🔴 **TRATTAMENTI: SOSPESI** \nFoglie bagnate o troppo vento.")
+        st.error("🔴 **TRATTAMENTI: SOSPESI** Foglie bagnate o troppo vento.")
 
-    # --- SEZIONE 3: ALERT LATERALE ---
+    # --- SEZIONE 3: ALERT SIDEBAR ---
     if curr_m['temp'] > 12 and bilancio_48h > 5:
-        st.sidebar.error("🚨 **ELATERIDI** \nTerreno umido: rischio ferretti su meloni.")
+        st.sidebar.error("🚨 **ELATERIDI**\nTerreno umido: rischio ferretti su meloni.")
     
-    if umidita_fissata > 85 and curr_m['temp'] > 16:
-        st.sidebar.warning("🍄 **PERONOSPORA** \nAlta umidità: rischio funghi su cetrioli.")
+    if umidita_visualizzata > 85 and curr_m['temp'] > 16:
+        st.sidebar.warning("🍄 **PERONOSPORA**\nRischio funghi su cetrioli e lamponi.")
 
 else:
-    st.error("Errore comunicazione stazione ITRENT123.")
+    st.error("Connessione con ITRENT123 fallita.")
 
-st.caption(f"Update: {datetime.now().strftime('%H:%M:%S')} | Logica Terreno Argilloso")
+st.caption(f"Update: {datetime.now().strftime('%H:%M:%S')} | Logica Orto Trento")
