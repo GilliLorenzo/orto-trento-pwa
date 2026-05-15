@@ -3,7 +3,7 @@ import requests
 from datetime import datetime, timedelta
 
 # Configurazione interfaccia ottimizzata per Google Pixel 10 Pro
-st.set_page_config(page_title="Orto Digitale ITRENT123", layout="centered")
+st.set_page_config(page_title="Orto Digitale Lorenzo Gilli", layout="centered")
 
 # --- RECUPERO SEGRETI E CONFIGURAZIONE ---
 try:
@@ -73,7 +73,7 @@ def elabora_strategia(current, pioggia_ieri):
 
 # --- INTERFACCIA UTENTE (UI) ---
 
-st.title("🌿 Orto Digitale Trento")
+st.title("🌿 Orto Digitale Lorenzo Gilli")
 st.markdown(f"**Monitoraggio Stazione {STATION_ID}**")
 
 current = get_current_data()
