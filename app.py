@@ -24,30 +24,36 @@ def get_current_data():
     except:
         return None
 
-def get_historical_data():
-    yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
-    url = f"https://api.weather.com/v2/pws/history/daily?stationId={STATION_ID}&format=json&units=m&date={yesterday}&apiKey={API_KEY}"
-    try:
-        r = requests.get(url)
-        data = r.json()['observations'][0]
-        # Restituiamo media temp per confronto e pioggia totale di ieri
-        return data['metric']['tempAvg'], data['metric']['precipTotal']
-    except:
-        return 0.0, 0.0
+def get_daily_data():
+    """Recupera i dati di oggi e di ieri per massime, minime e pioggia"""
+    today_str = datetime.now().strftime('%Y%m%d')
+    yesterday_str = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
+    
+    def fetch_day(date_str):
+        url = f"https://api.weather.com/v2/pws/history/daily?stationId={STATION_ID}&format=json&units=m&date={date_str}&apiKey={API_KEY}"
+        try:
+            r = requests.get(url)
+            return r.json()['observations'][0]['metric']
+        except:
+            return None
+
+    return fetch_day(today_str), fetch_day(yesterday_str)
 
 # --- LOGICA E UI ---
 
 st.title("🌿 Orto Digitale ITRENT123")
 
 current = get_current_data()
-temp_ieri_media, pioggia_ieri = get_historical_data()
+today_metrics, yesterday_metrics = get_daily_data()
 
-if current:
+if current and today_metrics:
     curr_m = current['metric']
     
     # --- SEZIONE DATI STAZIONE (Layout 2 colonne per Pixel) ---
     st.subheader("📊 Dati Stazione")
     
+    # Calcolo differenza temp rispetto alla media di ieri
+    temp_ieri_media = yesterday_metrics['tempAvg'] if yesterday_metrics else curr_m['temp']
     diff_temp = curr_m['temp'] - temp_ieri_media
 
     # Riga 1
@@ -62,23 +68,21 @@ if current:
 
     st.markdown("---")
 
-    # Riga 3 (Riepilogo)
+    # Riga 3 (Riepilogo REALE da History Daily)
     col5, col6 = st.columns(2)
-    t_max = curr_m.get('tempHigh', curr_m.get('highterm', '--'))
-    t_min = curr_m.get('tempLow', curr_m.get('lowterm', '--'))
-    col5.metric("Temp Max", f"{t_max}°C")
-    col6.metric("Temp Min", f"{t_min}°C")
+    col5.metric("Temp Max", f"{today_metrics.get('tempHigh', '--')}°C")
+    col6.metric("Temp Min", f"{today_metrics.get('tempLow', '--')}°C")
 
     # Riga 4
     col7, col8 = st.columns(2)
-    v_max = curr_m.get('windGust', '--')
-    col7.metric("Tot Accumulo", f"{curr_m.get('precipTotal', 0)} mm")
-    col8.metric("Raffica Max", f"{v_max} km/h")
+    col7.metric("Tot Accumulo", f"{today_metrics.get('precipTotal', 0)} mm")
+    col8.metric("Raffica Max", f"{today_metrics.get('windGust', '--')} km/h")
 
     st.divider()
 
     # --- LOGICA AGRONOMICA (Somma Reale) ---
-    bilancio_48h = pioggia_ieri + curr_m['precipTotal']
+    pioggia_ieri = yesterday_metrics['precipTotal'] if yesterday_metrics else 0.0
+    bilancio_48h = pioggia_ieri + today_metrics['precipTotal']
     
     st.subheader("🤖 Consigli Operativi")
     
@@ -101,6 +105,6 @@ if current:
         st.sidebar.error("🚨 **ALERT ELATERIDI**\nCondizioni ideali per risalita ferretti!")
 
 else:
-    st.error("Connessione alla stazione fallita. Controlla API Key o stato PWS.")
+    st.error("Connessione alla stazione fallita. Verifica API Key o stato PWS.")
 
-st.caption(f"Aggiornato: {datetime.now().strftime('%H:%M:%S')} | Trento")
+st.caption(f"Aggiornato: {datetime.now().strftime('%H:%M:%S')} | Dati certificati ITRENT123")
