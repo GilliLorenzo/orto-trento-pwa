@@ -1,106 +1,106 @@
 import streamlit as st
 import requests
 from datetime import datetime, timedelta
-import pytz # Libreria per gestire il fuso orario
 
-# Ottimizzazione per Google Pixel 10 Pro
-st.set_page_config(page_title="Orto Digitale di Lorenzo Gilli", layout="centered")
+# Configurazione ottimizzata per mobile
+st.set_page_config(page_title="Orto Digitale ITRENT123", layout="centered")
 
-# --- SEGRETI ---
+# --- RECUPERO SEGRETI ---
 try:
     API_KEY = st.secrets["wunderground_key"]
 except:
-    st.error("API Key non trovata!")
+    st.error("Errore: API Key non trovata nei Secrets!")
     st.stop()
 
 STATION_ID = "ITRENT123"
 
-# --- RECUPERO DATI ---
-def get_full_weather_data():
-    now = datetime.now()
-    today_str = now.strftime('%Y%m%d')
-    yesterday_str = (now - timedelta(days=1)).strftime('%Y%m%d')
-    
-    url_curr = f"https://api.weather.com/v2/pws/observations/current?stationId={STATION_ID}&format=json&units=m&apiKey={API_KEY}"
-    url_today = f"https://api.weather.com/v2/pws/history/daily?stationId={STATION_ID}&format=json&units=m&date={today_str}&apiKey={API_KEY}"
-    url_yest = f"https://api.weather.com/v2/pws/history/daily?stationId={STATION_ID}&format=json&units=m&date={yesterday_str}&apiKey={API_KEY}"
-    
+# --- FUNZIONI DATI ---
+
+def get_current_data():
+    url = f"https://api.weather.com/v2/pws/observations/current?stationId={STATION_ID}&format=json&units=m&apiKey={API_KEY}"
     try:
-        current = requests.get(url_curr).json()['observations'][0]
-        today = requests.get(url_today).json()['observations'][0]['metric']
-        yesterday = requests.get(url_yest).json()['observations'][0]['metric']
-        return current, today, yesterday
+        r = requests.get(url)
+        return r.json()['observations'][0]
     except:
-        return None, None, None
+        return None
 
-# --- ESECUZIONE ---
-current, today, yesterday = get_full_weather_data()
+def get_historical_data():
+    yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
+    url = f"https://api.weather.com/v2/pws/history/daily?stationId={STATION_ID}&format=json&units=m&date={yesterday}&apiKey={API_KEY}"
+    try:
+        r = requests.get(url)
+        data = r.json()['observations'][0]
+        # Restituiamo media temp per confronto e pioggia totale di ieri
+        return data['metric']['tempAvg'], data['metric']['precipTotal']
+    except:
+        return 0.0, 0.0
 
-if current and today and yesterday:
+# --- LOGICA E UI ---
+
+st.title("🌿 Orto Digitale ITRENT123")
+
+current = get_current_data()
+temp_ieri_media, pioggia_ieri = get_historical_data()
+
+if current:
     curr_m = current['metric']
-    pioggia_oggi = today.get('precipTotal', 0)
     
-    # --- LOGICA CORREZIONE UMIDITÀ ---
-    umidita_raw = current.get('humidity', 0)
-    if umidita_raw <= 15 and pioggia_oggi > 0.5:
-        umidita_visualizzata = 95
-        nota_umidita = " (Sensore KO)"
-    else:
-        umidita_visualizzata = umidita_raw
-        nota_umidita = ""
-
-    st.title("🌿 Orto Digitale di Lorenzo Gilli")
+    # --- SEZIONE DATI STAZIONE (Layout 2 colonne per Pixel) ---
+    st.subheader("📊 Dati Stazione")
     
-    # --- SEZIONE 1: DATI STAZIONE ---
-    st.subheader("📊 Dati Stazione Meteo")
-    
-    temp_ieri_media = yesterday.get('tempAvg', yesterday.get('tempHigh', curr_m['temp']))
     diff_temp = curr_m['temp'] - temp_ieri_media
 
-    # Riga 1: Temperature e Umidità
-    r1_col1, r1_col2, r1_col3, r1_col4 = st.columns(4)
-    r1_col1.metric("Temp Now", f"{curr_m['temp']}°C", f"{diff_temp:+.1f} vs ieri")
-    r1_col2.metric("Temp Max", f"{today.get('tempHigh', '--')}°C")
-    r1_col3.metric("Temp Min", f"{today.get('tempLow', '--')}°C")
-    r1_col4.metric("Umidità", f"{umidita_visualizzata}%", nota_umidita)
+    # Riga 1
+    col1, col2 = st.columns(2)
+    col1.metric("Temp", f"{curr_m['temp']}°C", f"{diff_temp:+.1f} vs ieri")
+    col2.metric("Pioggia 1h", f"{curr_m.get('precipRate', 0)} mm")
 
-    # Riga 2: Pioggia e Vento
-    r2_col1, r2_col2, r2_col3, r2_col4 = st.columns(4)
-    r2_col1.metric("Pioggia 1h", f"{curr_m.get('precipRate', 0)} mm")
-    r2_col2.metric("Tot Pioggia", f"{pioggia_oggi} mm")
-    r2_col3.metric("Vento Now", f"{curr_m['windSpeed']} km/h")
-    r2_col4.metric("Max Raffica", f"{today.get('windGust', '--')} km/h")
+    # Riga 2
+    col3, col4 = st.columns(2)
+    col3.metric("Vento", f"{curr_m['windSpeed']} km/h")
+    col4.metric("Umidità", f"{current.get('humidity', '--')}%")
+
+    st.markdown("---")
+
+    # Riga 3 (Riepilogo)
+    col5, col6 = st.columns(2)
+    t_max = curr_m.get('tempHigh', curr_m.get('highterm', '--'))
+    t_min = curr_m.get('tempLow', curr_m.get('lowterm', '--'))
+    col5.metric("Temp Max", f"{t_max}°C")
+    col6.metric("Temp Min", f"{t_min}°C")
+
+    # Riga 4
+    col7, col8 = st.columns(2)
+    v_max = curr_m.get('windGust', '--')
+    col7.metric("Tot Accumulo", f"{curr_m.get('precipTotal', 0)} mm")
+    col8.metric("Raffica Max", f"{v_max} km/h")
 
     st.divider()
 
-    # --- SEZIONE 2: STRATEGIA ORTO ---
-    bilancio_ieri_oggi = yesterday.get('precipTotal', 0) + pioggia_oggi
+    # --- LOGICA AGRONOMICA (Somma Reale) ---
+    bilancio_48h = pioggia_ieri + curr_m['precipTotal']
     
-    st.subheader("🎯 Strategia per l'Orto")
+    st.subheader("🤖 Consigli Operativi")
     
-    if bilancio_ieri_oggi > 6.0:
-        st.error(f"🔴 **IRRIGAZIONE: STOP** \nAccumulo ieri e oggi: {bilancio_ieri_oggi:.1f} mm. Terreno saturo.")
-    elif bilancio_ieri_oggi > 2.0:
-        st.warning(f"🟡 **IRRIGAZIONE: ATTENDI** \nAccumulo ieri e oggi: {bilancio_ieri_oggi:.1f} mm. Argilla umida.")
+    # Semaforo Irrigazione
+    if bilancio_48h > 6.0:
+        st.error(f"🔴 **IRRIGAZIONE: STOP TOTALE**\n\nAccumulo 48h: {bilancio_48h:.1f} mm. Terreno argilloso saturo.")
+    elif bilancio_48h > 2.0:
+        st.warning(f"🟡 **IRRIGAZIONE: ATTENDI**\n\nAccumulo 48h: {bilancio_48h:.1f} mm. Umidità residua sufficiente.")
     else:
-        st.success("🟢 **IRRIGAZIONE: OK** \nProcedere con impianto a goccia.")
+        st.success("🟢 **IRRIGAZIONE: OK**\n\nProcedere con irrigazione a goccia se necessario.")
 
-    if curr_m['windSpeed'] < 10 and umidita_visualizzata < 75:
-        st.success("🟢 **TRATTAMENTI: OK** \nIdeale per Zeolite o Neem.")
+    # Semaforo Trattamenti
+    if curr_m['windSpeed'] < 10 and current['humidity'] < 75:
+        st.success("🟢 **TRATTAMENTI: IDEALE**\n\nOttima finestra per Zeolite o Olio di Neem.")
     else:
-        st.error("🔴 **TRATTAMENTI: SOSPESI** \nFoglie bagnate o troppo vento.")
+        st.warning("🔴 **TRATTAMENTI: EVITARE**\n\nVento o umidità fuori soglia.")
 
-    # --- SEZIONE 3: ALERT SIDEBAR ---
-    if curr_m['temp'] > 12 and bilancio_ieri_oggi > 5:
-        st.sidebar.error("🚨 **ELATERIDI**\nTerreno umido: rischio ferretti su meloni.")
-    
-    if umidita_visualizzata > 85 and curr_m['temp'] > 16:
-        st.sidebar.warning("🍄 **PERONOSPORA**\nRischio funghi su cetrioli e lamponi.")
+    # Alert Parassiti
+    if curr_m['temp'] > 12 and bilancio_48h > 5:
+        st.sidebar.error("🚨 **ALERT ELATERIDI**\nCondizioni ideali per risalita ferretti!")
 
 else:
-    st.error("Connessione con ITRENT123 fallita.")
+    st.error("Connessione alla stazione fallita. Controlla API Key o stato PWS.")
 
-# --- FOOTER CON ORA ITALIANA ---
-tz_italy = pytz.timezone('Europe/Rome')
-ora_italiana = datetime.now(tz_italy).strftime('%H:%M:%S')
-st.caption(f"Ultimo aggiornamento: {ora_italiana} | Trento")
+st.caption(f"Aggiornato: {datetime.now().strftime('%H:%M:%S')} | Trento")
