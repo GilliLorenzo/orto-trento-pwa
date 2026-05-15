@@ -2,14 +2,12 @@ import streamlit as st
 import requests
 from datetime import datetime, timedelta
 
-# Configurazione interfaccia ottimizzata per Google Pixel 10 Pro
-st.set_page_config(page_title="Orto Digitale Lorenzo Gilli", layout="centered")
+st.set_page_config(page_title="Orto Digitale ITRENT123", layout="centered")
 
-# --- RECUPERO SEGRETI E CONFIGURAZIONE ---
 try:
     API_KEY = st.secrets["wunderground_key"]
 except:
-    st.error("Errore: API Key non trovata nei Secrets di Streamlit!")
+    st.error("Errore: API Key non trovata!")
     st.stop()
 
 STATION_ID = "ITRENT123"
@@ -17,104 +15,82 @@ STATION_ID = "ITRENT123"
 # --- FUNZIONI DI RECUPERO DATI ---
 
 def get_current_data():
-    """Recupera i dati meteo in tempo reale"""
     url = f"https://api.weather.com/v2/pws/observations/current?stationId={STATION_ID}&format=json&units=m&apiKey={API_KEY}"
     try:
         r = requests.get(url)
         return r.json()['observations'][0]
-    except:
-        return None
+    except: return None
 
-def get_historical_data():
-    """Recupera il riepilogo delle ultime 24 ore per il bilancio idrico"""
-    # Usiamo l'endpoint per le osservazioni giornaliere
-    yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
-    url = f"https://api.weather.com/v2/pws/history/daily?stationId={STATION_ID}&format=json&units=m&date={yesterday}&apiKey={API_KEY}"
+def get_comparison_data():
+    """Recupera i dati di ieri per il confronto orario e i mm totali"""
+    yesterday_str = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
+    url_history = f"https://api.weather.com/v2/pws/history/daily?stationId={STATION_ID}&format=json&units=m&date={yesterday_str}&apiKey={API_KEY}"
     try:
-        r = requests.get(url)
-        # Prendiamo il riepilogo massimo di pioggia caduta ieri
-        return r.json()['observations'][0]['metric']['precipTotal']
-    except:
-        return 0.0
+        r = requests.get(url_history)
+        data = r.json()['observations'][0]
+        # Cerchiamo la temp alla stessa ora di ieri (approssimata)
+        # Nota: Le API Daily a volte danno solo riepiloghi. Per precisione assoluta servirebbe l'endpoint 'hourly'.
+        return data['metric']['tempAvg'], data['metric']['precipTotal']
+    except: return 0.0, 0.0
 
-# --- LOGICA AGRONOMICA AVANZATA ---
+# --- INTERFACCIA UTENTE ---
 
-def elabora_strategia(current, pioggia_ieri):
-    temp = current['metric']['temp']
-    pioggia_oggi = current['metric']['precipTotal']
-    vento = current['metric']['windSpeed']
-    umidita = current['humidity']
-    
-    # Calcolo Bilancio Idrico Semplificato per terreno Argilloso
-    # L'argilla trattiene molto, quindi pesiamo molto la pioggia di ieri
-    bilancio_48h = (pioggia_ieri * 0.8) + pioggia_oggi
-    
-    # 1. Decisione Irrigazione (Pomodori, Meloni, Fragole, Lamponi)
-    if bilancio_48h > 6.0:
-        irrig_status = "🔴 STOP TOTALE"
-        irrig_msg = f"Terreno saturo ({bilancio_48h:.1f}mm accumulati). Rischio asfissia radicale nell'argilla."
-    elif bilancio_48h > 2.0:
-        irrig_status = "🟡 ATTENDI"
-        irrig_msg = "Umidità residua sufficiente. Non bagnare i pomodori oggi."
-    else:
-        irrig_status = "🟢 ATTIVA"
-        irrig_msg = "Il terreno sta asciugando. Procedere con irrigazione a goccia."
-
-    # 2. Decisione Trattamenti (Zeolite / Olio di Neem)
-    # Requisiti: Vento debole (< 10km/h) e foglie non bagnate (umidità < 75%)
-    if vento < 10 and umidita < 75 and pioggia_oggi == 0:
-        tratt_status = "🟢 IDEALE"
-        tratt_msg = "Condizioni perfette per pompa elettrica. Il prodotto aderirà bene."
-    else:
-        tratt_status = "🔴 EVITARE"
-        tratt_msg = "Vento forte o troppa umidità: rischio deriva o lavaggio del prodotto."
-
-    return irrig_status, irrig_msg, tratt_status, tratt_msg
-
-# --- INTERFACCIA UTENTE (UI) ---
-
-st.title("🌿 Orto Digitale Lorenzo Gilli")
-st.markdown(f"**Monitoraggio Stazione {STATION_ID}**")
+st.title("🌿 Orto Digitale ITRENT123")
 
 current = get_current_data()
-pioggia_ieri = get_historical_data()
+temp_ieri_media, pioggia_ieri = get_comparison_data()
 
 if current:
-    # Indicatori principali (Metriche)
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Temperatura", f"{current['metric']['temp']}°C")
-    col2.metric("Pioggia Oggi", f"{current['metric']['precipTotal']} mm")
-    col3.metric("Vento", f"{current['metric']['windSpeed']} km/h")
+    curr_m = current['metric']
+    
+    # --- NUOVA SEZIONE DATI STAZIONE ODIERNI ---
+    st.subheader("📊 Dati Stazione")
+    
+    # Calcolo differenza temperatura (approssimata su media ieri se orario non disponibile)
+    diff_temp = curr_m['temp'] - temp_ieri_media
+    diff_color = "normal" if abs(diff_temp) < 2 else "inverse"
 
-    irrig_s, irrig_m, tratt_s, tratt_m = elabora_strategia(current, pioggia_ieri)
+    # Prima riga: Istantanei
+    r1_col1, r1_col2, r1_col3, r1_col4 = st.columns(4)
+    r1_col1.metric("Temp", f"{curr_m['temp']}°C", f"{diff_temp:+.1f}°C ieri")
+    r1_col2.metric("Pioggia 1h", f"{curr_m['precipRate']} mm")
+    r1_col3.metric("Vento", f"{curr_m['windSpeed']} km/h")
+    r1_col4.metric("Umidità", f"{current['humidity']}%")
+
+    # Seconda riga: Riepilogo Giornaliero (Daily Summary)
+    # Nota: Wunderground fornisce i max/min nel pacchetto current per alcune PWS
+    r2_col1, r2_col2, r2_col3, r2_col4 = st.columns(4)
+    r2_col1.metric("Temp Max", f"{curr_m['tempHigh'] if curr_m['tempHigh'] else '--'}°C")
+    r2_col2.metric("Temp Min", f"{curr_m['tempLow'] if curr_m['tempLow'] else '--'}°C")
+    r2_col3.metric("Tot Accumulo", f"{curr_m['precipTotal']} mm")
+    r2_col4.metric("Raffica Max", f"{curr_m['windGust']} km/h")
 
     st.divider()
 
-    # Sezione Irrigazione
-    st.subheader(f"Irrigazione: {irrig_s}")
-    st.info(f"{irrig_m} (Accumulo ieri e oggi: {float(pioggia_ieri) + float(current['metric']['precipTotal']):.1f} mm)")
-
-    # Sezione Trattamenti
-    st.subheader(f"Trattamenti: {tratt_s}")
-    if "🟢" in tratt_s:
-        st.success(tratt_m)
+    # --- LOGICA AGRONOMICA (Somma Reale Pura) ---
+    bilancio_48h = pioggia_ieri + curr_m['precipTotal']
+    
+    st.subheader("🤖 Consigli Operativi")
+    
+    # Semaforo Irrigazione
+    if bilancio_48h > 6.0:
+        st.error(f"🔴 **IRRIGAZIONE: STOP TOTALE**\n\nAccumulo 48h: {bilancio_48h:.1f} mm. Terreno argilloso saturo.")
+    elif bilancio_48h > 2.0:
+        st.warning(f"🟡 **IRRIGAZIONE: ATTENDI**\n\nAccumulo 48h: {bilancio_48h:.1f} mm. Umidità residua sufficiente.")
     else:
-        st.warning(tratt_m)
+        st.success("🟢 **IRRIGAZIONE: OK**\n\nProcedere con irrigazione a goccia se necessario.")
 
-    st.divider()
+    # Semaforo Trattamenti
+    if curr_m['windSpeed'] < 10 and current['humidity'] < 75:
+        st.success("🟢 **TRATTAMENTI: IDEALE**\n\nOttima finestra per Zeolite o Olio di Neem.")
+    else:
+        st.warning("🔴 **TRATTAMENTI: EVITARE**\n\nVento o umidità fuori soglia.")
 
-    # Allerta Parassiti e Patologie
-    st.subheader("⚠️ Alert Protezione Piante")
-    
-    # Alert Elateridi (Ferretti)
-    if current['metric']['temp'] > 12 and (pioggia_ieri + current['metric']['precipTotal']) > 5:
-        st.error("🚨 **Allerta Elateridi:** Terreno umido e caldo. Risalita ferretti probabile su meloni e pomodori!")
-    
-    # Alert Peronospora
-    if current['humidity'] > 80 and current['metric']['temp'] > 16:
-        st.warning("🍄 **Rischio Funghi:** Alta umidità. Controlla le foglie di cetrioli e lamponi.")
+    # Alert Parassiti
+    if curr_m['temp'] > 12 and bilancio_48h > 5:
+        st.sidebar.error("🚨 **ALERT ELATERIDI**\nCondizioni ideali per risalita ferretti!")
 
 else:
-    st.error("Impossibile recuperare i dati live. Verifica la connessione della stazione.")
+    st.error("Connessione alla stazione ITRENT123 fallita.")
 
-st.caption(f"Ultimo aggiornamento: {datetime.now().strftime('%H:%M:%S')} - Dati storici inclusi per gestione terreno argilloso.")
+st.caption(f"Aggiornato alle {datetime.now().strftime('%H:%M:%S')} | Trento")
