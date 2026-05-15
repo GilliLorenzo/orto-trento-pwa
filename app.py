@@ -92,7 +92,7 @@ if current:
 
     # Sezione Irrigazione
     st.subheader(f"Irrigazione: {irrig_s}")
-    st.info(f"{irrig_m} (Accumulo 48h: {float(pioggia_ieri) + float(current['metric']['precipTotal']):.1f} mm)")
+    st.info(f"{irrig_m} (Accumulo ieri e oggi: {float(pioggia_ieri) + float(current['metric']['precipTotal']):.1f} mm)")
 
     # Sezione Trattamenti
     st.subheader(f"Trattamenti: {tratt_s}")
