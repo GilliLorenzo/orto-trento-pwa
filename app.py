@@ -93,4 +93,12 @@ if current and today and yesterday:
 
     # --- SEZIONE 3: ALERT SIDEBAR ---
     if curr_m['temp'] > 12 and bilancio_ieri_oggi > 5:
-        st.sidebar.error("🚨 **ELATERIDI**\n
+        st.sidebar.error("🚨 **ELATERIDI**\nTerreno umido: rischio ferretti su meloni.")
+    
+    if umidita_visualizzata > 85 and curr_m['temp'] > 16:
+        st.sidebar.warning("🍄 **PERONOSPORA**\nRischio funghi su cetrioli e lamponi.")
+
+else:
+    st.error("Connessione con ITRENT123 fallita.")
+
+st.caption(f"Update: {datetime.now().strftime('%H:%M:%S')} | Logica Ieri + Oggi")
