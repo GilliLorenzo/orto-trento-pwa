@@ -43,30 +43,39 @@ temp_ieri_media, pioggia_ieri = get_comparison_data()
 if current:
     curr_m = current['metric']
     
-    # --- NUOVA SEZIONE DATI STAZIONE ODIERNI ---
+
+# --- SEZIONE DATI STAZIONE ODIERNI (Versione Robusta) ---
     st.subheader("📊 Dati Stazione")
     
-    # Calcolo differenza temperatura (approssimata su media ieri se orario non disponibile)
+    # Calcolo differenza temperatura rispetto a ieri
     diff_temp = curr_m['temp'] - temp_ieri_media
-    diff_color = "normal" if abs(diff_temp) < 2 else "inverse"
 
     # Prima riga: Istantanei
     r1_col1, r1_col2, r1_col3, r1_col4 = st.columns(4)
-    r1_col1.metric("Temp", f"{curr_m['temp']}°C", f"{diff_temp:+.1f}°C ieri")
-    r1_col2.metric("Pioggia 1h", f"{curr_m['precipRate']} mm")
+    r1_col1.metric("Temp", f"{curr_m['temp']}°C", f"{diff_temp:+.1f} vs ieri")
+    # Usiamo .get() per evitare errori se il campo manca
+    r1_col2.metric("Pioggia 1h", f"{curr_m.get('precipRate', 0)} mm")
     r1_col3.metric("Vento", f"{curr_m['windSpeed']} km/h")
-    r1_col4.metric("Umidità", f"{current['humidity']}%")
+    r1_col4.metric("Umidità", f"{current.get('humidity', '--')}%")
 
-    # Seconda riga: Riepilogo Giornaliero (Daily Summary)
-    # Nota: Wunderground fornisce i max/min nel pacchetto current per alcune PWS
+    # Seconda riga: Riepilogo Giornaliero
+    # Wunderground spesso fornisce questi dati come 'heatIndex', 'windchill' o in pacchetti riassuntivi
+    # Per sicurezza, se non li trova, mettiamo N/D (Non Disponibile)
     r2_col1, r2_col2, r2_col3, r2_col4 = st.columns(4)
-    r2_col1.metric("Temp Max", f"{curr_m['tempHigh'] if curr_m['tempHigh'] else '--'}°C")
-    r2_col2.metric("Temp Min", f"{curr_m['tempLow'] if curr_m['tempLow'] else '--'}°C")
-    r2_col3.metric("Tot Accumulo", f"{curr_m['precipTotal']} mm")
-    r2_col4.metric("Raffica Max", f"{curr_m['windGust']} km/h")
+    
+    # Proviamo a recuperare i valori, altrimenti mettiamo "--"
+    t_max = curr_m.get('tempHigh', curr_m.get('highterm', '--'))
+    t_min = curr_m.get('tempLow', curr_m.get('lowterm', '--'))
+    v_max = curr_m.get('windGust', '--')
+    
+    r2_col1.metric("Temp Max", f"{t_max}°C")
+    r2_col2.metric("Temp Min", f"{t_min}°C")
+    r2_col3.metric("Tot Accumulo", f"{curr_m.get('precipTotal', 0)} mm")
+    r2_col4.metric("Raffica Max", f"{v_max} km/h")
+
 
     st.divider()
-
+    
     # --- LOGICA AGRONOMICA (Somma Reale Pura) ---
     bilancio_48h = pioggia_ieri + curr_m['precipTotal']
     
