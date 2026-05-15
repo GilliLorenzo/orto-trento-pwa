@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import pytz # Libreria per gestire il fuso orario
 
 # Ottimizzazione per Google Pixel 10 Pro
-st.set_page_config(page_title="Orto ITRENT123", layout="centered")
+st.set_page_config(page_title="Orto Digitale di Lorenzo Gilli", layout="centered")
 
 # --- SEGRETI ---
 try:
@@ -49,10 +49,10 @@ if current and today and yesterday:
         umidita_visualizzata = umidita_raw
         nota_umidita = ""
 
-    st.title("🌿 Orto Digitale ITRENT123")
+    st.title("🌿 Orto Digitale di Lorenzo Gilli")
     
     # --- SEZIONE 1: DATI STAZIONE ---
-    st.subheader("📊 Dati Stazione")
+    st.subheader("📊 Dati Stazione Meteo")
     
     temp_ieri_media = yesterday.get('tempAvg', yesterday.get('tempHigh', curr_m['temp']))
     diff_temp = curr_m['temp'] - temp_ieri_media
@@ -76,7 +76,7 @@ if current and today and yesterday:
     # --- SEZIONE 2: STRATEGIA ORTO ---
     bilancio_ieri_oggi = yesterday.get('precipTotal', 0) + pioggia_oggi
     
-    st.subheader("🎯 Strategia Orto")
+    st.subheader("🎯 Strategia per l'Orto")
     
     if bilancio_ieri_oggi > 6.0:
         st.error(f"🔴 **IRRIGAZIONE: STOP** \nAccumulo ieri e oggi: {bilancio_ieri_oggi:.1f} mm. Terreno saturo.")
