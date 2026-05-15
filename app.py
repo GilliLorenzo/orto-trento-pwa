@@ -37,14 +37,13 @@ current, today, yesterday = get_full_weather_data()
 
 if current and today and yesterday:
     curr_m = current['metric']
+    pioggia_oggi = today.get('precipTotal', 0)
     
     # --- LOGICA CORREZIONE UMIDITÀ ---
     umidita_raw = current.get('humidity', 0)
-    pioggia_oggi = today.get('precipTotal', 0)
-    
     if umidita_raw <= 15 and pioggia_oggi > 0.5:
         umidita_visualizzata = 95
-        nota_umidita = " (Corretto: Sensore KO)"
+        nota_umidita = " (Sensore KO)"
     else:
         umidita_visualizzata = umidita_raw
         nota_umidita = ""
@@ -57,17 +56,19 @@ if current and today and yesterday:
     temp_ieri_media = yesterday.get('tempAvg', yesterday.get('tempHigh', curr_m['temp']))
     diff_temp = curr_m['temp'] - temp_ieri_media
 
+    # Nuova Riga 1: Temperature e Umidità
     r1_col1, r1_col2, r1_col3, r1_col4 = st.columns(4)
-    r1_col1.metric("Temp", f"{curr_m['temp']}°C", f"{diff_temp:+.1f} vs ieri")
-    r1_col2.metric("Pioggia 1h", f"{curr_m.get('precipRate', 0)} mm")
-    r1_col3.metric("Vento", f"{curr_m['windSpeed']} km/h")
+    r1_col1.metric("Temp Now", f"{curr_m['temp']}°C", f"{diff_temp:+.1f} vs ieri")
+    r1_col2.metric("Temp Max", f"{today.get('tempHigh', '--')}°C")
+    r1_col3.metric("Temp Min", f"{today.get('tempLow', '--')}°C")
     r1_col4.metric("Umidità", f"{umidita_visualizzata}%", nota_umidita)
 
+    # Nuova Riga 2: Pioggia e Vento
     r2_col1, r2_col2, r2_col3, r2_col4 = st.columns(4)
-    r2_col1.metric("Temp Max", f"{today.get('tempHigh', '--')}°C")
-    r2_col2.metric("Temp Min", f"{today.get('tempLow', '--')}°C")
-    r2_col3.metric("Tot Accumulo", f"{pioggia_oggi} mm")
-    r2_col4.metric("Raffica Max", f"{today.get('windGust', '--')} km/h")
+    r2_col1.metric("Pioggia 1h", f"{curr_m.get('precipRate', 0)} mm")
+    r2_col2.metric("Tot Pioggia", f"{pioggia_oggi} mm")
+    r2_col3.metric("Vento Now", f"{curr_m['windSpeed']} km/h")
+    r2_col4.metric("Max Raffica", f"{today.get('windGust', '--')} km/h")
 
     st.divider()
 
@@ -76,7 +77,7 @@ if current and today and yesterday:
     
     st.subheader("🎯 Strategia Orto")
     
-    # Irrigazione con dicitura corretta
+    # Irrigazione
     if bilancio_ieri_oggi > 6.0:
         st.error(f"🔴 **IRRIGAZIONE: STOP** \nAccumulo ieri e oggi: {bilancio_ieri_oggi:.1f} mm. Terreno saturo.")
     elif bilancio_ieri_oggi > 2.0:
@@ -92,12 +93,4 @@ if current and today and yesterday:
 
     # --- SEZIONE 3: ALERT SIDEBAR ---
     if curr_m['temp'] > 12 and bilancio_ieri_oggi > 5:
-        st.sidebar.error("🚨 **ELATERIDI**\nTerreno umido: rischio ferretti su meloni.")
-    
-    if umidita_visualizzata > 85 and curr_m['temp'] > 16:
-        st.sidebar.warning("🍄 **PERONOSPORA**\nRischio funghi su cetrioli e lamponi.")
-
-else:
-    st.error("Connessione con ITRENT123 fallita.")
-
-st.caption(f"Update: {datetime.now().strftime('%H:%M:%S')} | Logica Ieri + Oggi")
+        st.sidebar.error("🚨 **ELATERIDI**\n
