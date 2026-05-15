@@ -1,50 +1,62 @@
 import streamlit as st
 import requests
 
-# Configurazione per il tuo Pixel 10 Pro
 st.set_page_config(page_title="Orto ITRENT123", layout="centered")
 
-st.title("🌿 Dashboard Orto Trento")
-st.subheader("Stazione: Wunderground ITRENT123")
+# Recupero sicuro dell'API Key dai Secrets
+try:
+    API_KEY = st.secrets["wunderground_key"]
+except:
+    API_KEY = None
+    st.error("API Key non trovata nei Secrets!")
 
-# --- LOGICA DI CALCOLO ---
-def calcola_consigli(temp, pioggia, vento, umidita):
-    consigli = []
-    # Logica Irrigazione (Terreno Argilloso)
-    if pioggia > 5:
-        irrigazione = "🔴 STOP (Terreno Saturo)"
-        consigli.append("L'argilla trattiene l'acqua: non irrigare per 24-48h per evitare asfissia radicale.")
+STATION_ID = "ITRENT123"
+
+def get_real_data():
+    if not API_KEY:
+        return None
+    url = f"https://api.weather.com/v2/pws/observations/current?stationId={STATION_ID}&format=json&units=m&apiKey={API_KEY}"
+    try:
+        response = requests.get(url)
+        data = response.json()
+        obs = data['observations'][0]
+        return {
+            "temp": obs['metric']['temp'],
+            "rain_today": obs['metric']['precipTotal'],
+            "wind": obs['metric']['windSpeed'],
+            "humidity": obs['humidity']
+        }
+    except:
+        return None
+
+# Esecuzione
+meteo = get_real_data()
+
+if meteo:
+    st.title("🌿 Dashboard Orto Trento")
+    st.subheader(f"Stazione: {STATION_ID} (LIVE)")
+
+    col1, col2 = st.columns(2)
+    col1.metric("Pioggia Oggi", f"{meteo['rain_today']} mm")
+    col2.metric("Vento", f"{meteo['wind']} km/h")
+
+    st.divider()
+
+    # Logica specifica per il tuo terreno argilloso
+    if meteo['rain_today'] > 5:
+        st.error("🔴 STOP IRRIGAZIONE (Terreno Saturo)")
+        st.info("L'argilla trattiene l'acqua. Per le tue 30 piante di pomodoro, attendi che il terreno asciughi in superficie.")
     else:
-        irrigazione = "🟢 ATTIVA (Poco a poco)"
-        consigli.append("Irrigazione a goccia consigliata per pomodori e meloni.")
+        st.success("🟢 IRRIGAZIONE OK")
 
-    # Logica Trattamenti (Pompa Elettrica - Zeolite/Neem)
-    if vento < 10 and umidita < 75:
-        trattamento = "🟢 IDEALE"
+    # Logica trattamenti (Zeolite/Neem) con pompa elettrica
+    if meteo['wind'] < 10 and meteo['humidity'] < 75:
+        st.success("🟢 TRATTAMENTI: MOMENTO IDEALE")
     else:
-        trattamento = "🔴 EVITARE (Vento/Umidità)"
-        
-    return irrigazione, trattamento, consigli
+        st.warning("🔴 TRATTAMENTI: EVITARE")
 
-# --- SIMULAZIONE DATI (In attesa della tua API Key) ---
-# Qui poi collegheremo i dati reali della tua stazione
-temp, pioggia, vento, umidita = 19.5, 7.2, 4.0, 82.0
-
-irrig, tratt, suggerimenti = calcola_consigli(temp, pioggia, vento, umidita)
-
-# --- INTERFACCIA MOBILE ---
-col1, col2 = st.columns(2)
-with col1:
-    st.metric("Pioggia Oggi", f"{pioggia} mm")
-    st.write(f"**Irrigazione:** {irrig}")
-
-with col2:
-    st.metric("Vento", f"{vento} km/h")
-    st.write(f"**Trattamenti:** {tratt}")
-
-st.divider()
-st.info(f"💡 **Consiglio Tecnico:** {suggerimenti[0]}")
-
-# Alert Elateridi
-if temp > 12 and pioggia > 5:
-    st.warning("⚠️ **Allerta Elateridi:** Terreno umido e caldo, i 'ferretti' potrebbero risalire. Monitora le radici dei meloni.")
+    # Allerta Parassiti (Elateridi)
+    if meteo['temp'] > 12 and meteo['rain_today'] > 5:
+        st.warning("⚠️ ALLERTA ELATERIDI: Risalita ferretti probabile su meloni e cetrioli.")
+else:
+    st.warning("⚠️ In attesa di dati validi dalla stazione ITRENT123...")
