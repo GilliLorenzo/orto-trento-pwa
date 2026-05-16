@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+import math
 from datetime import datetime, timedelta
 
 # Configurazione ottimizzata per mobile (Pixel 10 Pro)
@@ -24,23 +25,16 @@ def get_current_data():
     except:
         return None
 
-def get_historical_and_recent_data():
-    """Recupera i riassunti giornalieri e i dati recenti per il confronto orario"""
+def get_historical_daily_data():
+    """Recupera i riassunti giornalieri di oggi e ieri (unici endpoint sempre attivi)"""
     today_str = datetime.now().strftime('%Y%m%d')
     yesterday_str = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
 
-    # 1. Riepilogo giornaliero di oggi (Max/Min/Accumulo correnti)
     url_today = f"https://api.weather.com/v2/pws/history/daily?stationId={STATION_ID}&format=json&units=m&date={today_str}&apiKey={API_KEY}"
-    
-    # 2. Riepilogo giornaliero di ieri (per pioggia 48h)
-    url_yesterday_daily = f"https://api.weather.com/v2/pws/history/daily?stationId={STATION_ID}&format=json&units=m&date={yesterday_str}&apiKey={API_KEY}"
-    
-    # 3. Dati RECENTI orari (restituisce gli ultimi 7 giorni dettagliati, molto più affidabile di /hourly)
-    url_recent = f"https://api.weather.com/v2/pws/history/recent?stationId={STATION_ID}&format=json&units=m&apiKey={API_KEY}"
+    url_yesterday = f"https://api.weather.com/v2/pws/history/daily?stationId={STATION_ID}&format=json&units=m&date={yesterday_str}&apiKey={API_KEY}"
 
     today_metrics = None
-    temp_ieri_stessa_ora = None
-    pioggia_ieri = 0.0
+    yesterday_metrics = None
 
     try:
         r_today = requests.get(url_today)
@@ -48,42 +42,31 @@ def get_historical_and_recent_data():
     except: pass
 
     try:
-        r_yst_daily = requests.get(url_yesterday_daily)
-        pioggia_ieri = r_yst_daily.json()['observations'][0]['metric']['precipTotal']
+        r_yesterday = requests.get(url_yesterday)
+        yesterday_metrics = r_yesterday.json()['observations'][0]['metric']
     except: pass
 
-    try:
-        r_recent = requests.get(url_recent)
-        observations = r_recent.json()['observations']
-        
-        # Calcoliamo il momento esatto di 24 ore fa
-        target_time = datetime.now() - timedelta(hours=24)
-        
-        # Cerchiamo l'osservazione più vicina a 24 ore fa
-        min_diff = timedelta(hours=2) # Tolleranza massima iniziale
-        
-        for obs in observations:
-            # Wunderground usa il formato ISO o locale, proviamo a leggerlo in modo flessibile
-            try:
-                obs_time = datetime.strptime(obs['obsTimeLocal'], '%Y-%m-%d %H:%M:%S')
-            except:
-                obs_time = datetime.strptime(obs['obsTimeUtc'], '%Y-%m-%dT%H:%M:%SZ') + timedelta(hours=2) # Offset Italia estivo
-            
-            diff = abs(obs_time - target_time)
-            if diff < min_diff:
-                min_diff = diff
-                temp_ieri_stessa_ora = obs['metric']['temp']
-    except:
-        pass
+    return today_metrics, yesterday_metrics
 
-    return today_metrics, temp_ieri_stessa_ora, pioggia_ieri
+def stima_temperatura_oraria(temp_max, temp_min, ora_target):
+    """
+    Ricostruisce la curva termica di ieri usando una sinusoide termica standard.
+    Il picco minimo è di solito alle 06:00, il picco massimo alle 15:00.
+    """
+    temp_media = (temp_max + temp_min) / 2
+    ampiezza = (temp_max - temp_min) / 2
+    
+    # Sfasamento per far coincidere il calore massimo alle 15:00
+    angolo = 2 * math.pi * (ora_target - 9) / 24
+    temp_stimata = temp_media + ampiezza * math.sin(angolo)
+    return round(temp_stimata, 1)
 
 # --- LOGICA E UI ---
 
 st.title("🌿 Orto Digitale ITRENT123")
 
 current = get_current_data()
-today_metrics, temp_ieri_stessa_ora, pioggia_ieri = get_historical_and_recent_data()
+today_metrics, yesterday_metrics = get_historical_daily_data()
 
 if current and today_metrics:
     curr_m = current['metric']
@@ -91,13 +74,20 @@ if current and today_metrics:
     # --- SEZIONE DATI STAZIONE ---
     st.subheader("📊 Dati Stazione")
     
-    # Gestione del delta temperatura
-    if temp_ieri_stessa_ora is not None:
-        diff_temp = curr_m['temp'] - temp_ieri_stessa_ora
-        delta_testo = f"{diff_temp:+.1f}°C ieri stessa ora"
+    # Calcolo dello scostamento orario stimato (Evita i blocchi API delle PWS)
+    if yesterday_metrics:
+        ora_attuale = datetime.now().hour
+        t_max_ieri = yesterday_metrics.get('tempHigh')
+        t_min_ieri = yesterday_metrics.get('tempLow')
+        
+        if t_max_ieri is not None and t_min_ieri is not None:
+            temp_ieri_stessa_ora = stima_temperatura_oraria(t_max_ieri, t_min_ieri, ora_attuale)
+            diff_temp = curr_m['temp'] - temp_ieri_stessa_ora
+            delta_testo = f"{diff_temp:+.1f}°C ieri stessa ora (stima)"
+        else:
+            delta_testo = "--"
     else:
-        # Fallback nel caso in cui i dati storici orari non siano ancora popolati
-        delta_testo = "Dato in calcolo"
+        delta_testo = "--"
 
     # Riga 1
     col1, col2 = st.columns(2)
@@ -111,7 +101,7 @@ if current and today_metrics:
 
     st.markdown("---")
 
-    # Riga 3 (Riepilogo REALE)
+    # Riga 3 (Riepilogo REALE di Oggi)
     col5, col6 = st.columns(2)
     col5.metric("Temp Max", f"{today_metrics.get('tempHigh', '--')}°C")
     col6.metric("Temp Min", f"{today_metrics.get('tempLow', '--')}°C")
@@ -124,6 +114,7 @@ if current and today_metrics:
     st.divider()
 
     # --- LOGICA AGRONOMICA (Somma Reale Pura) ---
+    pioggia_ieri = yesterday_metrics.get('precipTotal', 0.0) if yesterday_metrics else 0.0
     bilancio_48h = pioggia_ieri + today_metrics['precipTotal']
     
     st.subheader("🤖 Consigli Operativi")
@@ -149,4 +140,4 @@ if current and today_metrics:
 else:
     st.error("Connessione alla stazione fallita. Verifica API Key o stato PWS.")
 
-st.caption(f"Aggiornato: {datetime.now().strftime('%H:%M:%S')} | Analisi temporale rolling 24h")
+st.caption(f"Aggiornato: {datetime.now().strftime('%H:%M:%S')} | Algoritmo di ricostruzione termica sinusoidale applicato.")
