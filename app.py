@@ -2,9 +2,13 @@ import streamlit as st
 import requests
 import math
 from datetime import datetime, timedelta
+import zoneinfo  # Libreria standard per gestire i fusi orari
 
 # Configurazione ottimizzata per mobile (Pixel 10 Pro)
 st.set_page_config(page_title="Orto Digitale ITRENT123", layout="centered")
+
+# Definizione del fuso orario corretto (Europe/Rome gestisce anche l'ora legale in automatico)
+FUSO_ITALIA = zoneinfo.ZoneInfo("Europe/Rome")
 
 # --- RECUPERO SEGRETI ---
 try:
@@ -26,9 +30,10 @@ def get_current_data():
         return None
 
 def get_historical_daily_data():
-    """Recupera i riassunti giornalieri di oggi e ieri (unici endpoint sempre attivi)"""
-    today_str = datetime.now().strftime('%Y%m%d')
-    yesterday_str = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
+    """Recupera i riassunti giornalieri usando l'ora italiana"""
+    ora_locale = datetime.now(FUSO_ITALIA)
+    today_str = ora_locale.strftime('%Y%m%d')
+    yesterday_str = (ora_locale - timedelta(days=1)).strftime('%Y%m%d')
 
     url_today = f"https://api.weather.com/v2/pws/history/daily?stationId={STATION_ID}&format=json&units=m&date={today_str}&apiKey={API_KEY}"
     url_yesterday = f"https://api.weather.com/v2/pws/history/daily?stationId={STATION_ID}&format=json&units=m&date={yesterday_str}&apiKey={API_KEY}"
@@ -49,14 +54,9 @@ def get_historical_daily_data():
     return today_metrics, yesterday_metrics
 
 def stima_temperatura_oraria(temp_max, temp_min, ora_target):
-    """
-    Ricostruisce la curva termica di ieri usando una sinusoide termica standard.
-    Il picco minimo è di solito alle 06:00, il picco massimo alle 15:00.
-    """
+    """Calcola la sinusoide termica basandosi sull'ora locale"""
     temp_media = (temp_max + temp_min) / 2
     ampiezza = (temp_max - temp_min) / 2
-    
-    # Sfasamento per far coincidere il calore massimo alle 15:00
     angolo = 2 * math.pi * (ora_target - 9) / 24
     temp_stimata = temp_media + ampiezza * math.sin(angolo)
     return round(temp_stimata, 1)
@@ -68,22 +68,24 @@ st.title("🌿 Orto Digitale ITRENT123")
 current = get_current_data()
 today_metrics, yesterday_metrics = get_historical_daily_data()
 
+# Recuperiamo l'ora esatta italiana per l'interfaccia e per il calcolo
+ora_locale_adesso = datetime.now(FUSO_ITALIA)
+
 if current and today_metrics:
     curr_m = current['metric']
     
     # --- SEZIONE DATI STAZIONE ---
     st.subheader("📊 Dati Stazione")
     
-    # Calcolo dello scostamento orario stimato (Evita i blocchi API delle PWS)
     if yesterday_metrics:
-        ora_attuale = datetime.now().hour
+        ora_attuale_ita = ora_locale_adesso.hour
         t_max_ieri = yesterday_metrics.get('tempHigh')
         t_min_ieri = yesterday_metrics.get('tempLow')
         
         if t_max_ieri is not None and t_min_ieri is not None:
-            temp_ieri_stessa_ora = stima_temperatura_oraria(t_max_ieri, t_min_ieri, ora_attuale)
+            temp_ieri_stessa_ora = stima_temperatura_oraria(t_max_ieri, t_min_ieri, ora_attuale_ita)
             diff_temp = curr_m['temp'] - temp_ieri_stessa_ora
-            delta_testo = f"{diff_temp:+.1f}°C ieri stessa ora (stima)"
+            delta_testo = f"{diff_temp:+.1f}°C ieri stessa ora"
         else:
             delta_testo = "--"
     else:
@@ -140,4 +142,5 @@ if current and today_metrics:
 else:
     st.error("Connessione alla stazione fallita. Verifica API Key o stato PWS.")
 
-st.caption(f"Aggiornato: {datetime.now().strftime('%H:%M:%S')} | Algoritmo di ricostruzione termica sinusoidale applicato.")
+# Mostra l'orario di aggiornamento allineato all'ora italiana
+st.caption(f"Aggiornato alle {ora_locale_adesso.strftime('%H:%M:%S')} (Ora locale Trento)")
