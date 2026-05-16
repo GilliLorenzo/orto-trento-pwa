@@ -2,15 +2,12 @@ import streamlit as st
 import requests
 import math
 from datetime import datetime, timedelta
-import zoneinfo  # Libreria standard per gestire i fusi orari
+import zoneinfo
 
-# Configurazione ottimizzata per mobile (Pixel 10 Pro)
 st.set_page_config(page_title="Orto Digitale ITRENT123", layout="centered")
 
-# Definizione del fuso orario corretto (Europe/Rome gestisce anche l'ora legale in automatico)
 FUSO_ITALIA = zoneinfo.ZoneInfo("Europe/Rome")
 
-# --- RECUPERO SEGRETI ---
 try:
     API_KEY = st.secrets["wunderground_key"]
 except:
@@ -30,7 +27,6 @@ def get_current_data():
         return None
 
 def get_historical_daily_data():
-    """Recupera i riassunti giornalieri usando l'ora italiana"""
     ora_locale = datetime.now(FUSO_ITALIA)
     today_str = ora_locale.strftime('%Y%m%d')
     yesterday_str = (ora_locale - timedelta(days=1)).strftime('%Y%m%d')
@@ -54,12 +50,28 @@ def get_historical_daily_data():
     return today_metrics, yesterday_metrics
 
 def stima_temperatura_oraria(temp_max, temp_min, ora_target):
-    """Calcola la sinusoide termica basandosi sull'ora locale"""
     temp_media = (temp_max + temp_min) / 2
     ampiezza = (temp_max - temp_min) / 2
     angolo = 2 * math.pi * (ora_target - 9) / 24
     temp_stimata = temp_media + ampiezza * math.sin(angolo)
     return round(temp_stimata, 1)
+
+def calcola_umidita_virtuale(temp_attuale, temp_min_oggi):
+    """
+    In mancanza del sensore, stima l'umidità relativa.
+    Assume che all'ora della temperatura minima l'umidità fosse vicina al 95%.
+    """
+    try:
+        # Approssimazione basata sulla depressione del punto di rugiada
+        dew_point = temp_min_oggi - 0.5  
+        # Formula di Magnus-Tetens semplificata per l'umidità relativa
+        es = 6.11 * math.exp((17.27 * temp_attuale) / (237.3 + temp_attuale))
+        e = 6.11 * math.exp((17.27 * dew_point) / (237.3 + dew_point))
+        rh = (e / es) * 100
+        # Limitiamo i valori tra il 40% e il 98% per sicurezza agronomica
+        return max(40, min(98, round(rh)))
+    except:
+        return 70 # Fallback standard se il calcolo fallisce
 
 # --- LOGICA E UI ---
 
@@ -67,12 +79,21 @@ st.title("🌿 Orto Digitale ITRENT123")
 
 current = get_current_data()
 today_metrics, yesterday_metrics = get_historical_daily_data()
-
-# Recuperiamo l'ora esatta italiana per l'interfaccia e per il calcolo
 ora_locale_adesso = datetime.now(FUSO_ITALIA)
 
 if current and today_metrics:
     curr_m = current['metric']
+    
+    # --- CORREZIONE SOFTWARE SENSORE GUASTO ---
+    umidita_stazione = current.get('humidity', 10)
+    
+    if umidita_stazione <= 12: # Se il sensore è bloccato al 10% o giù di lì
+        t_min_oggi = today_metrics.get('tempLow', curr_m['temp'] - 5)
+        umidita_reale = calcola_umidita_virtuale(curr_m['temp'], t_min_oggi)
+        nota_umidita = "⚠️ Sensore guasto: valore stimato via software"
+    else:
+        umidita_reale = umidita_stazione
+        nota_umidita = "Stazione LIVE"
     
     # --- SEZIONE DATI STAZIONE ---
     st.subheader("📊 Dati Stazione")
@@ -86,10 +107,8 @@ if current and today_metrics:
             temp_ieri_stessa_ora = stima_temperatura_oraria(t_max_ieri, t_min_ieri, ora_attuale_ita)
             diff_temp = curr_m['temp'] - temp_ieri_stessa_ora
             delta_testo = f"{diff_temp:+.1f}°C ieri stessa ora"
-        else:
-            delta_testo = "--"
-    else:
-        delta_testo = "--"
+        else: delta_testo = "--"
+    else: delta_testo = "--"
 
     # Riga 1
     col1, col2 = st.columns(2)
@@ -99,7 +118,8 @@ if current and today_metrics:
     # Riga 2
     col3, col4 = st.columns(2)
     col3.metric("Vento", f"{curr_m['windSpeed']} km/h")
-    col4.metric("Umidità", f"{current.get('humidity', '--')}%")
+    # Mostriamo l'umidità calcolata e aggiungiamo una nota informativa sotto
+    col4.metric("Umidità", f"{umidita_reale}%", help=nota_umidita)
 
     st.markdown("---")
 
@@ -129,11 +149,11 @@ if current and today_metrics:
     else:
         st.success("🟢 **IRRIGAZIONE: OK**\n\nProcedere con irrigazione a goccia se necessario.")
 
-    # Semaforo Trattamenti
-    if curr_m['windSpeed'] < 10 and current['humidity'] < 75:
+    # Semaforo Trattamenti (Ora basato sull'umidità stimata corretta!)
+    if curr_m['windSpeed'] < 10 and umidita_reale < 75:
         st.success("🟢 **TRATTAMENTI: IDEALE**\n\nOttima finestra per Zeolite o Olio di Neem.")
     else:
-        st.warning("🔴 **TRATTAMENTI: EVITARE**\n\nVento o umidità fuori soglia.")
+        st.warning("🔴 **TRATTAMENTI: EVITARE**\n\nVento forte o umidità troppo alta (rischio scarsa adesione).")
 
     # Alert Parassiti
     if curr_m['temp'] > 12 and bilancio_48h > 5:
@@ -142,5 +162,4 @@ if current and today_metrics:
 else:
     st.error("Connessione alla stazione fallita. Verifica API Key o stato PWS.")
 
-# Mostra l'orario di aggiornamento allineato all'ora italiana
-st.caption(f"Aggiornato alle {ora_locale_adesso.strftime('%H:%M:%S')} (Ora locale Trento)")
+st.caption(f"Aggiornato alle {ora_locale_adesso.strftime('%H:%M:%S')} (Ora locale Trento) | Correzione igrometro attiva.")
